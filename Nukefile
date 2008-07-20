@@ -10,9 +10,10 @@
 
 (set @nib_files                (filelist "^resources/.*\.lproj/[^/]*\.nib$"))
 (set xib_files                 (filelist "^resources/.*\.lproj/[^/]*\.xib$"))
-
+(set @datamodels (filelist "^data/.*\.xcdatamodel$"))
 
 ;; tasks
+(compilation-tasks)
 (application-tasks)
 
 (xib_files each:
