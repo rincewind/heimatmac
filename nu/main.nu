@@ -1,7 +1,22 @@
 ;; main.nu
 ;;
-;; Copyright (c) 2008 Peter Quade, based on work from Tim Burks
 
+;; HeimatMac. Easy membership management.
+;; Copyright (c) 2008 Peter Quade
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License
+;; as published by the Free Software Foundation; either version 2
+;; of the License, or (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program; if not, write to the Free Software
+;; Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 (load "bridgesupport")
 (import AddressBook) ;; AddressBook framework
@@ -24,26 +39,29 @@
 
 
 (class HMMembership is NSManagedObject
-       (ivar (id) startDate (id) endDate)
-       (- (id) title is
-	  "Unknown Member")
-       (- (id) street is
-	  "Unknown Street")
-       (- (id) place is
-	  "Unknown Place")
        (- (BOOL) isActive is
 	  (let ((now (NSDate date)))
 	    (if (and (eq @startDate (now earlierDate: @startDate))
 		     (or (not @endDate)
 			 (eq @endDate (now laterDate: @endDate))))
 		YES
-		(else NO)))))
+		(else NO))))
+       (- (id) init is (NSLog "Say hi to HMMembership") (super init))
+       (- (void) awakeFromInsert is
+	  (NSLog "Wach! nach insert HMMembership")
+	  (super awakeFromInsert)))
+
        
 
 (class HMPayment is NSManagedObject)
-(class HMPerson is NSManagedObject)
-(class HMMembershipType is NSManagedObject)
+(class HMPerson is NSManagedObject
+       (- (id) init is (NSLog "Say hi to HMPerson") (super init))
+       (- (void) awakeFromInsert is
+	  (NSLog "Wach!")
+	  (super awakeFromInsert)))
 
+(class HMMembershipType is NSManagedObject)
+(class HMNote is NSManagedObject)
 
 (class SourceListItem is NSObject
        (ivar (id) subitems (id) title (BOOL) isGroup (BOOL) isLeaf)
@@ -84,7 +102,7 @@
         (self valueForProperty: kABLastNameProperty)))
 
 (class MainWindowController is NSWindowController
-     (ivar (id) sourcelist (id) sourceListEntries)
+     (ivar (id) sourcelist (id) sourceListEntries (id) memberview (id) memberlist)
 
      (- init is
 	(set self (super init))
