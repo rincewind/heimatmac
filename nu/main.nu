@@ -35,10 +35,38 @@
 
 (load "textimagecell")
 
-(((NSUserDefaults alloc) init) setInteger: 1 forKey: "com.apple.CoreData.SQLDebug")
+(((NSUserDefaults alloc) init) setInteger: 0 forKey: "com.apple.CoreData.SQLDebug")
 
+;; Additional utilities for managed objects
+(class NSManagedObject is NSObject
+     ;; Create an object for a specified entity.
+     (imethod (id) createObjectWithEntity:(id) entityName is
+          (NSEntityDescription
+                              insertNewObjectForEntityForName:entityName
+                              inManagedObjectContext:(self managedObjectContext)))
+     
+     ;; Get all objects of receivers entity.
+     (imethod (id) objects is
+          (set f ((NSFetchRequest alloc) init))
+          (f setEntity:(NSEntityDescription entityForName: ((self class) name) inManagedObjectContext: (self  managedObjectContext)))
+          (((self managedObjectContext)) executeFetchRequest:f error:nil))
+     
+     (imethod (id) managedObjectModel is
+          (((NSApplication sharedApplication) delegate) managedObjectModel))
+     
+     
+     (imethod (id) namedFetchRequest:(id)name substitutionVariables:(id)vars is
+          ((self managedObjectModel) fetchRequestFromTemplateWithName: name substitutionVariables: vars)))
+
+(class HMMembershipType is NSManagedObject)
 
 (class HMMembership is NSManagedObject
+       (ivar (id) startDate (id) endDate (BOOL) isCash (id) membershiptype)
+       
+       (- (id) title is "No Title")
+       (- (id) street is "The Street")
+       (- (id) place is "12345 the place")
+
        (- (BOOL) isActive is
 	  (let ((now (NSDate date)))
 	    (if (and (eq @startDate (now earlierDate: @startDate))
@@ -46,10 +74,11 @@
 			 (eq @endDate (now laterDate: @endDate))))
 		YES
 		(else NO))))
-       (- (id) init is (NSLog "Say hi to HMMembership") (super init))
+
        (- (void) awakeFromInsert is
-	  (NSLog "Wach! nach insert HMMembership")
-	  (super awakeFromInsert)))
+	  (super awakeFromInsert)
+	  (if (not @membershiptype) 
+	      (set @membershiptype ((self objectsWithEntity: "HMMembershipType") objectAtIndex: 0)))))
 
        
 
@@ -60,7 +89,6 @@
 	  (NSLog "Wach!")
 	  (super awakeFromInsert)))
 
-(class HMMembershipType is NSManagedObject)
 (class HMNote is NSManagedObject)
 
 (class SourceListItem is NSObject
@@ -157,6 +185,9 @@
 
 	(basePath stringByAppendingPathComponent: "HeimatMac"))
 
+     (- (id) managedObjectModel is (@coredatasession managedObjectModel))
+     (- (id) managedObjectContext is (@coredatasession managedObjectContext))
+
      (- (void) applicationDidFinishLaunching: (id) sender is
 	(set filemanager (NSFileManager defaultManager))
 	(set appsupfo (self applicationSupportFolder))
@@ -177,11 +208,10 @@
 	(if dbNeedsInit
 	    (NSLog "initializing database")
 	    (set simpletype (@coredatasession createObjectWithEntity: "HMMembershipType"))
-	    (simpletype setValue: "Standard Membership" forKey: "name") ;; FIXME: i18n
+	    (simpletype setValue: "Standard Membership" forKey: "name") ;; i18n
 	    (simpletype setValue: 10 forKey: "monthlyFee")
 	    
-	    (set exampleMember ((@coredatasession createObjectWithEntity: "HMMembership")))
-	    (exampleMember setValue: simpletype forKey: "type")))
+	    (@coredatasession save)))
 	    
 	
 	
