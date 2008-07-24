@@ -82,12 +82,119 @@
 
        
 
+
 (class HMPayment is NSManagedObject)
+
 (class HMPerson is NSManagedObject
-       (- (id) init is (NSLog "Say hi to HMPerson") (super init))
+
+       (- (id) primaryInMultiValue: (int) propconst is
+	  (set multivalue ((self person) valueForProperty: propconst))
+	  (set ident (multivalue primaryIdentifier))
+	  (multivalue valueForIdentifier: ident))
+
+       (- (id) setValue: (id) value toPrimaryInMultiValue: (int) propconst withLabel:(id) label is
+	  (set multivalue ((self person) valueForProperty: propconst))
+	  (if multivalue
+	      (set multivalue (multivalue mutableCopy))
+	      (set ident (multivalue primaryIdentifier))
+	      (multivalue replaceValueAtIndex: (multivalue indexForIdentifier: ident) withValue: value)
+	      (else 
+		(set multivalue ((ABMutableMultiValue alloc) init))
+		(multivalue setPrimaryIdentifier: (multivalue addValue: value withLabel: label))))
+
+	  ((self person) setValue: multivalue forProperty: propconst))
+
+
+       (- (id) addressElementWithKey: (id) key is
+	  ((self primaryInMultiValue: kABAddressProperty) objectForKey: key))
+
+       (- (id) setValue: (id) value toAddressElementWithKey:(id)key is
+	  (set address (self primaryInMultiValue: kABAddressProperty))
+	  (if address
+	      (set address (address mutableCopy))
+	      (else (set address (NSMutableDictionary dictionary))))
+	  (address setObject: value forKey: key)
+	  (self setValue: address toPrimaryInMultiValue: kABAddressProperty withLabel: kABAddressHomeLabel))
+	  
+
+       (- (id) firstname is 
+	  ((self person) valueForProperty: kABFirstNameProperty))
+
+       (- (void) setFirstname: (id) aName is
+	  ((self person) setValue: aName forProperty: kABFirstNameProperty))
+
+
+       (- (id) lastname is 
+	  ((self person) valueForProperty: kABLastNameProperty))
+
+       (- (void) setLastname: (id) aName is
+	  ((self person) setValue: aName forProperty: kABLastNameProperty))
+
+
+       (- (id) street is 
+	  (self addressElementWithKey: kABAddressStreetKey))
+
+       (- (void) setStreet: (id) newStreet is
+	  (self setValue: newStreet toAddressElementWithKey: kABAddressStreetKey))
+
+
+       (- (id) place is
+	  (self addressElementWithKey: kABAddressCityKey))
+
+       (- (void) setPlace: (id) newValue is
+	  (self setValue: newValue toAddressElementWithKey: kABAddressCityKey))
+
+
+       (- (id) postalcode is
+	  (self addressElementWithKey: kABAddressZIPKey))
+
+       (- (void) setPostalcode: (id) newValue is
+	  (self setValue: newValue toAddressElementWithKey: kABAddressZIPKey))
+
+
+       (- (id) birthday is 
+	  ((self person) valueForProperty: kABBirthdayProperty))
+
+       (- (void) setBirthday: (id) newValue is
+	  ((self person) setValue: newValue forProperty: kABBirthdayProperty))
+
+       (- (id) email is  
+	  (self primaryInMultiValue: kABEmailProperty))
+
+       (- (void) setEmail: (id) newValue is
+	  (self setValue: newValue toPrimaryInMultiValue: kABEmailProperty withLabel: kABEmailHomeLabel))
+
+
+       (- (id) person is 
+	  (self willAccessValueForKey: "person")
+	  (set person (self primitivePerson))
+	  (self didAccessValueForKey: "person")
+	  (if (person) person
+	      (else (self loadPersonWithUUID: (self uuid)))))
+	      
+
        (- (void) awakeFromInsert is
-	  (NSLog "Wach!")
-	  (super awakeFromInsert)))
+	  (super awakeFromInsert)
+	  (self createPerson))
+	  
+       (- (void) awakeFromFetch is
+	  (super awakeFromFetch)
+	  (set uuid (self uuid))
+	  (if uuid
+	      (self loadPersonWithUUID: uuid)
+	      (else (self createPerson))))
+
+       (- (void) createPerson is
+	  (let ((person ((ABPerson alloc) initWithAddressBook: (ABAddressBook sharedAddressBook))))
+	    (self setValue: (person uniqueId) forKey: "uuid")
+	    (self setPrimitivePerson: person)
+	    (self setValue: 0 forKey: "position")))
+	  
+
+       (- (void) loadPersonWithUUID:(id)uuid is
+	  (self setPrimitivePerson: ((ABAddressBook sharedAddressBook) recordForUniqueId: uuid))))
+
+
 
 (class HMNote is NSManagedObject)
 
@@ -125,9 +232,6 @@
 
 (set SHOW_CONSOLE_AT_STARTUP nil)
 
-(class ABPerson
-     (- firstName is
-        (self valueForProperty: kABLastNameProperty)))
 
 (class MainWindowController is NSWindowController
      (ivar (id) sourcelist (id) sourceListEntries (id) memberview (id) memberlist)
@@ -220,6 +324,7 @@
 	((@coredatasession managedObjectContext) undoManager))
 
      (- (int) applicationShouldTerminate: (id) sender is
+	((ABAddressBook sharedAddressBook) save)
 	(@coredatasession save))
 
 
