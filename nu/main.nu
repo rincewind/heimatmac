@@ -21,6 +21,9 @@
 (load "bridgesupport")
 (import AddressBook) ;; AddressBook framework
 (load "AddressBook")
+
+(import WebKit)
+(load "WebKit")
 ;;(puts ((BridgeSupport "constants") description))
 ;;(puts ((BridgeSupport  "frameworks") description))
 ;;(puts ((BridgeSupport  "functions") description))
@@ -34,6 +37,34 @@
 
 
 (load "textimagecell")
+
+(function printTable (collection createLine) 
+  (set result ((NSMutableString alloc) init))
+  (NSLog "printing #{(collection count)} objects")
+  (result appendString: <<+END
+<html>
+<head>
+<style type="text/css">
+h1 { background-color: red; }
+</style>
+</head>
+<body>
+<h1>Heimatverein Fr&ouml;mern</h1>
+<h2>#{((NSDate date) description)}</h1>
+<table>
+<tbody>
+END)
+  (collection each: (do (item)
+		      (result appendString: (createLine item))))
+  (result appendString: <<+END
+</tbody>
+</table>
+<small>Created with HeimatMac v0.0001</small>
+</body>
+</html>
+END)
+  result)
+
 
 (((NSUserDefaults alloc) init) setInteger: 0 forKey: "com.apple.CoreData.SQLDebug")
 
@@ -63,9 +94,36 @@
 (class HMMembership is NSManagedObject
        (ivar (id) startDate (id) endDate (BOOL) isCash (id) membershiptype)
        
-       (- (id) title is "No Title")
-       (- (id) street is "The Street")
-       (- (id) place is "12345 the place")
+       (- (id) orderedPersons is
+	  (((self persons) allObjects) sortedArrayUsingBlock: (do (lhs rhs) (cond
+									     ((== (lhs position) (rhs position)) 0)
+									     ((< (lhs position) (rhs position)) -1)
+									     ((> (lhs position) (rhs position)) 1)))))
+
+       (- (id) firstPerson is
+	  (let ((orderedPersons (self orderedPersons)))
+	    (if (and orderedPersons (> (orderedPersons count) 0))
+		(orderedPersons objectAtIndex: 0)
+		(else nil))))
+
+       (- (id) title is 
+	  (if (self persons)
+	      (case ((self persons) count)
+		(0 "Unbekanntes Mitglied")
+		(1 (let  ((person ((self persons) anyObject) ))
+		     "#{(person firstname)} #{(person lastname)}"))
+		(2 (let ((persons ((self persons) allObjects)))
+		     (set p1 (persons objectAtIndex: 0))
+		     (set p2 (persons objectAtIndex: 1))
+		     (if ((p1 lastname) isEqualToString: (p2 lastname))
+			 "#{(p1 firstname)} und #{(p2 firstname)} #{(p1 lastname)}")))
+		(else "Familie #{((((self persons) allObjects) objectAtIndex: 0) lastname)}"))))
+
+       (- (id) street is 
+	  (or ((self firstPerson) street) "n/a"))
+
+       (- (id) place is
+	  (or ((self firstPerson) place) "n/a"))
 
        (- (BOOL) isActive is
 	  (let ((now (NSDate date)))
@@ -75,10 +133,18 @@
 		YES
 		(else NO))))
 
+       
+
        (- (void) awakeFromInsert is
 	  (super awakeFromInsert)
 	  (if (not @membershiptype) 
-	      (set @membershiptype ((self objectsWithEntity: "HMMembershipType") objectAtIndex: 0)))))
+	      (set @membershiptype ((self objectsWithEntity: "HMMembershipType") objectAtIndex: 0))))
+       (- (void) awakeFromFetch is
+	  (super awakeFromFetch)))
+
+
+       
+
 
        
 
@@ -175,7 +241,8 @@
 
        (- (void) awakeFromInsert is
 	  (super awakeFromInsert)
-	  (self createPerson))
+	  (self createPerson)
+	  (NSLog "#{(self membership)}"))
 	  
        (- (void) awakeFromFetch is
 	  (super awakeFromFetch)
@@ -234,7 +301,37 @@
 
 
 (class MainWindowController is NSWindowController
-     (ivar (id) sourcelist (id) sourceListEntries (id) memberview (id) memberlist)
+     (ivar (id) sourcelist (id) sourceListEntries (id) memberview (id) memberlist (id) membersctl (id) personsctl)
+     
+     (- (void) addPerson: (id) sender is
+	(let ((count ((@personsctl arrangedObjects) count))
+	      (member ((@membersctl selectedObjects) objectAtIndex: 0)))
+	  (if (> count 0)
+	      (set newposition (+ count 1))
+	      (set person (HMPerson createObject))
+	      (set otherPerson (member firstPerson))
+
+	      (person setPosition: newposition)
+	      (person setLastname: (otherPerson lastname))
+	      (person setStreet: (otherPerson street))
+	      (person setPlace: (otherPerson place))
+	      (person setPostalcode: (otherPerson postalcode))
+	      (person setEmail: (otherPerson email))
+	      ((member persons) addObject: person)
+	      (person setMembership: member)
+	      (else (@personsctl add: sender)))))
+	    
+
+     (- (void) print: (id) sender is
+	(set printview ((WebView alloc) initWithFrame: '(0 0 1000 1000)))
+	((printview mainFrame) loadHTMLString: (printTable (@membersctl arrangedObjects) 
+							   (do (item) "<tr><td>#{(item title)}</td><td>#{(item street)}</td><td>#{(item place)}</td></tr>") )
+	 baseURL: (NSURL URLWithString: "http://www.qdevelop.de/"))
+
+	(set printinfo (NSPrintInfo sharedPrintInfo))
+	(printinfo  setVerticallyCentered: NO)
+	(printinfo setHorizontalPagination: NSFitPagination)
+	((NSPrintOperation printOperationWithView:printview printInfo:printinfo) runOperation))
 
      (- init is
 	(set self (super init))
@@ -267,17 +364,20 @@
 	;; don't allow special group nodes to be selected
 	(if ((item representedObject) isGroup) NO (else YES)))
 
-     (- (void) awakeFromNib is
+    ;; (- (void) awakeFromNib is
 	;;(set col (@sourcelist tableColumnWithIdentifier: @"MainColumn"))
 	;;(set $cell ((TextImageCell alloc) init)) ;; we need to keep the cell around somewhere
 	;;(col setDataCell: $cell)
-	))
+;;	)
+     )
 
 
 
 (class ApplicationDelegate is NSObject
      (ivar (id) coredatasession)
      (ivar-accessors)
+
+
 
      (- (id) applicationSupportFolder is
 	(NSLog "foo")
