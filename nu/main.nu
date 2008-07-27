@@ -45,7 +45,8 @@
 <html>
 <head>
 <style type="text/css">
-h1 { background-color: red; }
+h1 { background-color: red; font-size: 12pt;}
+table {width: 100%;}
 </style>
 </head>
 <body>
@@ -107,17 +108,19 @@ END)
 		(else nil))))
 
        (- (id) title is 
-	  (if (self persons)
-	      (case ((self persons) count)
-		(0 "Unbekanntes Mitglied")
-		(1 (let  ((person ((self persons) anyObject) ))
-		     "#{(person firstname)} #{(person lastname)}"))
-		(2 (let ((persons ((self persons) allObjects)))
+	  (let ((ps (self persons)))
+	    (if ps
+		(let ((persons (ps allObjects)))
+		  (case (persons count)
+		    (0 "Unbekanntes Mitglied")
+		    (1 (let  ((person (persons objectAtIndex: 0) ))
+			 "#{(person firstname)} #{(person lastname)}"))
+		    (2 
 		     (set p1 (persons objectAtIndex: 0))
 		     (set p2 (persons objectAtIndex: 1))
 		     (if ((p1 lastname) isEqualToString: (p2 lastname))
-			 "#{(p1 firstname)} und #{(p2 firstname)} #{(p1 lastname)}")))
-		(else "Familie #{((((self persons) allObjects) objectAtIndex: 0) lastname)}"))))
+			 "#{(p1 firstname)} und #{(p2 firstname)} #{(p1 lastname)}"))
+		    (else "Familie #{((((self persons) allObjects) objectAtIndex: 0) lastname)}"))))))
 
        (- (id) street is 
 	  (or ((self firstPerson) street) "n/a"))
@@ -138,7 +141,9 @@ END)
        (- (void) awakeFromInsert is
 	  (super awakeFromInsert)
 	  (if (not @membershiptype) 
+	      (NSLog "foo")
 	      (set @membershiptype ((self objectsWithEntity: "HMMembershipType") objectAtIndex: 0))))
+
        (- (void) awakeFromFetch is
 	  (super awakeFromFetch)))
 
@@ -300,8 +305,18 @@ END)
 (set SHOW_CONSOLE_AT_STARTUP nil)
 
 
-(class MainWindowController is NSWindowController
-     (ivar (id) sourcelist (id) sourceListEntries (id) memberview (id) memberlist (id) membersctl (id) personsctl)
+(class HMReportDesign is NSManagedObject)
+
+(class HMMemberList is NSManagedObject)
+(class HMStaticMemberList is HMMemberList)
+(class HMSmartMemberList is HMMemberList)
+
+
+(class HMMainWindowController is NSWindowController
+     (ivar (id) sourcelist (id) sourceListEntries
+	   (id) memberview (id) memberlist 
+	   (id) membersctl (id) personsctl
+	   (id) sheetcontroller)
      
      (- (void) addPerson: (id) sender is
 	(let ((count ((@personsctl arrangedObjects) count))
@@ -322,11 +337,11 @@ END)
 	      (else (@personsctl add: sender)))))
 	    
 
-     (- (void) print: (id) sender is
+     (- (void) printMembers: (id) sender is
 	(set printview ((WebView alloc) initWithFrame: '(0 0 1000 1000)))
 	((printview mainFrame) loadHTMLString: (printTable (@membersctl arrangedObjects) 
 							   (do (item) "<tr><td>#{(item title)}</td><td>#{(item street)}</td><td>#{(item place)}</td></tr>") )
-	 baseURL: (NSURL URLWithString: "http://www.qdevelop.de/"))
+	 baseURL: (NSURL URLWithString: "http://www.pqua.de/"))
 
 	(set printinfo (NSPrintInfo sharedPrintInfo))
 	(printinfo  setVerticallyCentered: NO)
@@ -334,22 +349,43 @@ END)
 	((NSPrintOperation printOperationWithView:printview printInfo:printinfo) runOperation))
 
      (- init is
-	(set self (super init))
-	(if self
-	    (self initWithWindowNibName:"MainWindow")
-	    ((self window) makeKeyAndOrderFront:self)
+	(set self (self initWithWindowNibName:"MainWindow"))
+	((self window) makeKeyAndOrderFront:self)
 
-	    (set @sourceListEntries 
-		 (NSArray arrayWithList: (list 
-					  (SourceListItem groupWithTitle: "BANANEN" subitems: 
-							  (array 
-							   (SourceListItem itemWithTitle: "Gelb" subitems: (array)) 
-							   (SourceListItem itemWithTitle: "Krumm" subitems: (array)))) 
-					  (SourceListItem groupWithTitle: "KIRSCHEN" subitems: 
-							  (array (SourceListItem itemWithTitle: "Suess" subitems: (array))))))))
-	   
+	(set @sourceListEntries 
+	     (NSArray arrayWithList: (list 
+				      (SourceListItem groupWithTitle: "BANANEN" subitems: 
+						      (array 
+						       (SourceListItem itemWithTitle: "Gelb" subitems: (array)) 
+						       (SourceListItem itemWithTitle: "Krumm" subitems: (array)))) 
+				      (SourceListItem groupWithTitle: "KIRSCHEN" subitems: 
+						      (array (SourceListItem itemWithTitle: "Suess" subitems: (array)))))))
+     
 
         self)
+
+     (- (void) initAddressbook is
+	(NSLog "show: #{((NSUserDefaults standardUserDefaults) integerForKey: $UseAddressbookGroup)}")
+	(set showsheet 
+	     (case ((NSUserDefaults standardUserDefaults) integerForKey: $UseAddressbookGroup)
+	       (1 (progn
+		    (set ab (ABAddressBook sharedAddressBook))
+		    (set group  ((NSUserDefaults standardUserDefaults) stringForKey: $AddressbookGroupName))
+		    (set searchelement (ABGroup searchElementForProperty: kABGroupNameProperty 
+						label: nil 
+						key: nil 
+						value: group 
+						comparison: kABEqual))
+		    (set groups (ab recordsMatchingSearchElement: searchelement))
+		    (not (groups count))))
+	       ($UseAddressbookGroupMarker t)
+	       (else nil)))
+	     
+	(if showsheet
+	    (if (not @sheetcontroller)
+		(set @sheetcontroller ((HMGruppeSheetController alloc) init)))
+	    (@sheetcontroller beginSheet: (self window))))
+
 
 	 
 
@@ -364,58 +400,110 @@ END)
 	;; don't allow special group nodes to be selected
 	(if ((item representedObject) isGroup) NO (else YES)))
 
-    ;; (- (void) awakeFromNib is
+     (- (void) windowDidBecomeMain:(id) notification is
+	(self initAddressbook))
+
+
+;;     (- (void) awakeFromNib is
+	;;(super awakeFromNib)
 	;;(set col (@sourcelist tableColumnWithIdentifier: @"MainColumn"))
 	;;(set $cell ((TextImageCell alloc) init)) ;; we need to keep the cell around somewhere
 	;;(col setDataCell: $cell)
 ;;	)
      )
 
+(set $AddressbookGroupName "addressbookgroupName")
+(set $UseAddressbookGroup "useAddressbookGroup")
+(set $UseAddressbookGroupMarker 12)
 
+(class HMGruppeSheetController is NSObject
+       (ivar (id) sheet (id) defaultsController)
+
+       (- (void) closeSheet: (id) sender is 
+	  (NSLog "closing sheet")
+	  (NSApp endSheet: @sheet))
+	  
+       (- (id) addressbookGroups is
+	  (array "foo" "bar")
+	  )
+
+       (- (BOOL) willAddGroup is
+	  YES)
+
+       (- (id) init is
+	  (set self (super init))
+	  (NSBundle loadNibNamed: "AddressbookGroup" owner: self)
+	  (NSLog "#{@defaultsController}")
+	  self)
+
+       (- (void) beginSheet: (id) sender is 
+	  (NSLog "#{@sheet} #{sender}")
+	  (NSApp beginSheet: @sheet
+		 modalForWindow: sender
+		 modalDelegate: self 
+		 didEndSelector: "didEndSheet:returnCode:contextInfo:"
+		 contextInfo: nil))
+	  
+
+       (- (void)didEndSheet:(id)sheet returnCode:(int)returnCode contextInfo:(id)contextInfo is
+	  (@sheet orderOut: self)))
+	  
+
+       
 
 (class ApplicationDelegate is NSObject
      (ivar (id) coredatasession)
      (ivar-accessors)
 
-
-
      (- (id) applicationSupportFolder is
-	(NSLog "foo")
 	(set paths (NSSearchPathForDirectoriesInDomains NSApplicationSupportDirectory NSUserDomainMask YES))
-	(NSLog "bar")
-
 	(set basePath (if (paths count) (paths objectAtIndex: 0) (else (NSTemporaryDirectory))))
-	(NSLog "spam")
-
 	(basePath stringByAppendingPathComponent: "HeimatMac"))
 
      (- (id) managedObjectModel is (@coredatasession managedObjectModel))
      (- (id) managedObjectContext is (@coredatasession managedObjectContext))
 
+     (- (void) initDefaults is
+	(set ud (NSUserDefaults standardUserDefaults))
+	(ud registerDefaults: (dict $AddressbookGroupName "Heimat" $UseAddressbookGroup $UseAddressbookGroupMarker)))
+	
+	
+
+     (- (void) initDatabase is
+	(NSLog "initializing database")
+	(set simpletype (@coredatasession createObjectWithEntity: "HMMembershipType"))
+	(simpletype setValue: "Standard Mitgliedschaft" forKey: "name") ;; i18n
+	(simpletype setValue: 10 forKey: "monthlyFee")
+	(@coredatasession save))
+
+
+
+	
+
      (- (void) applicationDidFinishLaunching: (id) sender is
+	(self initDefaults)
+
 	(set filemanager (NSFileManager defaultManager))
 	(set appsupfo (self applicationSupportFolder))
 	(set dbNeedsInit NO)
 	(if (not (filemanager fileExistsAtPath: appsupfo isDirectory: nil))
 	    (filemanager createDirectoryAtPath: appsupfo attributes: nil)
 	    (set dbNeedsInit YES))
-	
+
 	(set @coredatasession ((NuCoreDataSession alloc)
 			       initWithName: "default" 
 			       mom: ((NSBundle mainBundle) pathForResource: "HeimatMac" ofType: "mom")
 			       sqliteStore: (appsupfo stringByAppendingPathComponent: "data.sq")))
 
-	(set $console ((NuConsoleWindowController alloc) init))
-	(if SHOW_CONSOLE_AT_STARTUP ($console toggleConsole:self))
-	(set $mainwindowcontroller ((MainWindowController alloc) init))
+
+	;;(set $console ((NuConsoleWindowController alloc) init))
+	;;(if SHOW_CONSOLE_AT_STARTUP ($console toggleConsole:self))
+
+	(set $mainwindowcontroller ((HMMainWindowController alloc) init))
+
 
 	(if dbNeedsInit
-	    (NSLog "initializing database")
-	    (set simpletype (@coredatasession createObjectWithEntity: "HMMembershipType"))
-	    (simpletype setValue: "Standard Membership" forKey: "name") ;; i18n
-	    (simpletype setValue: 10 forKey: "monthlyFee")
-	    
-	    (@coredatasession save)))
+	    (self initDatabase)))
 	    
 	
 	

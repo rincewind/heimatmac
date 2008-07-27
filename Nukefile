@@ -24,6 +24,10 @@
 ;; application description
 (set @application              "HeimatMac")
 (set @application_identifier   "de.pqua.heimatmac")
+(set @icon_files (filelist "^resources/[^/]*\.icns$"))
+(set @application_icon_file "heimatmac.icns")
+(set @resources (array "resources/Credits.html"))
+
 ;; (set @application_resource_localized_dir "#{@application_resource_dir}/German.lproj")
 
 (set @nib_files                (filelist "^resources/.*\.lproj/[^/]*\.nib$"))
@@ -33,6 +37,9 @@
 ;; tasks
 (compilation-tasks)
 (application-tasks)
+
+(set @application_icon_file "heimatmac.icns")
+
 
 (xib_files each:
      (do (xib_file)
